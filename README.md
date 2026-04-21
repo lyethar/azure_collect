@@ -175,7 +175,112 @@ The platform and architecture are detected automatically for `azurehound` (`wind
 
 ---
 
-## Notes
+## BloodHound CE Queries
+
+The repository includes `entrafalcon_bloodhound_queries.json` — 85 custom Cypher queries for BloodHound CE, built to mirror each of EntraFalcon's nine enumeration areas. Once you have imported the `azurehound.json` collection into BloodHound CE, these queries let you explore the same attack surface EntraFalcon surfaces in its HTML reports, but as interactive graphs with full path visualisation.
+
+### Coverage
+
+| Category | Queries | EntraFalcon Source Module |
+|----------|---------|---------------------------|
+| Groups | 12 | `check_Groups.psm1` |
+| Enterprise Apps | 12 | `check_EnterpriseApps.psm1` |
+| Users | 11 | `check_Users.psm1` |
+| Attack Paths | 10 | Cross-cutting / risk scoring |
+| Roles | 10 | `check_Roles.psm1` |
+| App Registrations | 8 | `check_AppRegistrations.psm1` |
+| Tenant | 7 | `check_Tenant.psm1` |
+| Managed Identities | 6 | `check_ManagedIdentities.psm1` |
+| Conditional Access | 5 | `check_CAPs.psm1` |
+| PIM | 4 | `check_PIM.psm1` |
+
+### Importing into BloodHound CE
+
+BloodHound CE only supports query import via its API. Use the Compass Security import script from their [`bloodhoundce-resources`](https://github.com/CompassSecurity/bloodhoundce-resources) repository:
+
+```powershell
+# Clone the import script
+git clone https://github.com/CompassSecurity/bloodhoundce-resources
+cd bloodhoundce-resources
+
+# Import the queries (adjust the path to point at this repo's JSON)
+./scripts/Import-BloodHoundCECustomQueries.ps1 `
+    -BloodHoundUrl "http://localhost:8080" `
+    -QueryFile "/path/to/entrafalcon_bloodhound_queries.json"
+```
+
+Once imported, all 85 queries appear in BloodHound CE under **Custom Queries**, grouped by category with the `[EntraFalcon]` prefix.
+
+### Query examples
+
+A representative sample from each major category:
+
+**Groups — Users Who Can Inject Into Privileged Groups**
+```cypher
+MATCH p = (u:AZUser)-[:AZAddMembers]->(g:AZGroup)
+    -[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZOwner|AZContributor]
+    ->(:AZTenant)
+WHERE u.enabled = true
+RETURN p LIMIT 500
+```
+
+**Enterprise Apps — Service Principals with Global Admin**
+```cypher
+MATCH p = (sp:AZServicePrincipal)-[:AZGlobalAdmin]->(:AZTenant)
+RETURN p LIMIT 500
+```
+
+**Managed Identities — VMs Whose Managed Identity Has Elevated Roles**
+```cypher
+MATCH p = (vm:AZVM)-[:AZManagedIdentity]->(sp:AZServicePrincipal)
+    -[:AZOwner|AZContributor|AZGlobalAdmin]->()
+WHERE sp.serviceprincipaltype = 'ManagedIdentity'
+RETURN p LIMIT 500
+```
+
+**Roles — Paths to Global Admin via Group Membership**
+```cypher
+MATCH p = (u:AZUser)-[:AZMemberOf*1..3]->(g:AZGroup)-[:AZGlobalAdmin]->(:AZTenant)
+WHERE u.enabled = true
+RETURN p LIMIT 500
+```
+
+**Conditional Access — Users Who Can Modify CA Exclusion Groups**
+```cypher
+MATCH p = (u:AZUser)-[:AZAddMembers|AZOwns|AZGenericWrite]->(g:AZGroup)
+WHERE g.capexclusiongroup = true AND u.enabled = true
+RETURN p LIMIT 500
+```
+
+**Attack Path — App Owner → Subscription Owner via Service Principal**
+```cypher
+MATCH p = (u:AZUser)-[:AZOwns]->(a:AZApp)
+    <-[:AZRunAs]-(sp:AZServicePrincipal)-[:AZOwner]->(:AZSubscription)
+WHERE u.enabled = true
+RETURN p LIMIT 500
+```
+
+**Attack Path — On-Premises Synced Account → Cloud Subscription Owner**
+```cypher
+MATCH p = allShortestPaths((u:AZUser)-[*1..6]->(:AZSubscription))
+WHERE u.onpremsyncenabled = true AND u.enabled = true
+  AND ANY(r IN relationships(p) WHERE type(r) = 'AZOwner')
+RETURN p LIMIT 200
+```
+
+### Note on Conditional Access queries
+
+BloodHound CE does not natively collect Conditional Access Policy data. The five CA-category queries rely on a `capexclusiongroup` property on `AZGroup` nodes that is not populated by standard `azurehound` collection. To use them, tag the relevant group nodes after cross-referencing with EntraFalcon's output:
+
+```cypher
+// Tag a group as a CA exclusion group by its object ID
+MATCH (g:AZGroup {objectid: '<GROUP_OBJECT_ID>'})
+SET g.capexclusiongroup = true
+```
+
+The remaining 80 queries work against any standard azurehound dataset without modification.
+
+---
 
 - This tool is intended for use during **authorized security assessments only**. Always ensure you have written permission before running any collection against a tenant.
 - `az cli` authentication is handled by Microsoft's MSAL library — credentials are never handled or stored by this script.
