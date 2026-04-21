@@ -1,0 +1,687 @@
+{
+  "queries": [
+
+    // =========================================================================
+    // SECTION 1 — GROUPS  (mirrors check_Groups.psm1)
+    // Graph source: /v1.0/groups, /v1.0/groups/{id}/members,
+    //               /v1.0/groups/{id}/owners, /v1.0/groups/{id}/transitiveMembers
+    //               /beta/roleManagement/directory/roleAssignments (for group roles)
+    //               /v1.0/identity/conditionalAccess/policies (for CA exclusions)
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Groups — All AzureHound Groups",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH (g:AZGroup) RETURN g LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Role-Assignable Groups",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH (g:AZGroup) WHERE g.isassignabletorole = true RETURN g LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Role-Assignable Groups with Their Role Assignments",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (g:AZGroup)-[:AZHasRole|AZMemberOf*1..]->(r:AZRole) WHERE g.isassignabletorole = true RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Groups with Azure Subscription Owner Role",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (g:AZGroup)-[:AZOwner]->(:AZSubscription) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Groups with Azure Subscription Contributor Role",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (g:AZGroup)-[:AZContributor]->(:AZSubscription) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Groups with Privileged Entra Roles (GA / PRA / UAA)",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (g:AZGroup)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator]->(:AZTenant) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Dynamic Groups (Membership Rule Present)",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH (g:AZGroup) WHERE g.membershiprule IS NOT NULL AND g.membershiprule <> '' RETURN g LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — On-Premises Synced Groups",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH (g:AZGroup) WHERE g.onpremisessyncenabled = true RETURN g LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Non-Privileged Users Who Can Add Members to Privileged Groups",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZAddMembers]->(g:AZGroup)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZOwner|AZContributor]->(:AZTenant) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Users Who Own Privileged Groups",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZOwns]->(g:AZGroup) WHERE (g)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator]->(:AZTenant) AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Nested Groups Containing Privileged Roles (Transitive)",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (g1:AZGroup)-[:AZMemberOf*2..]->(g2:AZGroup)-[:AZHasRole]->(:AZRole) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Groups — Paths from Group Membership to Global Admin",
+      "category": "EntraFalcon — Groups",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = shortestPath((u:AZUser)-[:AZMemberOf|AZHasRole*1..]->(t:AZTenant)) WHERE ANY(r IN relationships(p) WHERE type(r) = 'AZGlobalAdmin') RETURN p LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 2 — ENTERPRISE APPS / SERVICE PRINCIPALS
+    // (mirrors check_EnterpriseApps.psm1)
+    // Graph source: /v1.0/servicePrincipals, /v1.0/servicePrincipals/{id}/appRoleAssignments
+    //               /v1.0/servicePrincipals/{id}/oauth2PermissionGrants
+    //               ARM /subscriptions/{id}/providers/Microsoft.Authorization/roleAssignments
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Enterprise Apps — All Service Principals",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH (sp:AZServicePrincipal) RETURN sp LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals with Global Admin Role",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZGlobalAdmin]->(:AZTenant) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals with Privileged Entra Roles",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZAppAdmin|AZCloudAppAdmin]->(:AZTenant) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals with Azure Subscription Owner",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZOwner]->(:AZSubscription) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals with Azure Subscription Contributor",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZContributor]->(:AZSubscription) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals with User Access Administrator",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZUserAccessAdministrator]->() RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Foreign (Multi-Tenant) Service Principals with High Privilege",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZOwner|AZContributor|AZUserAccessAdministrator]->() WHERE sp.foreigntenant = true OR sp.accountenabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals That Can Reset Passwords",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZResetPassword]->(u:AZUser) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals That Can Add Members to Groups",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZAddMembers]->(g:AZGroup) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Shortest Path from Service Principal to Tenant",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = shortestPath((sp:AZServicePrincipal)-[*1..5]->(:AZTenant)) WHERE sp.accountenabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals Owning App Registrations",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZOwns]->(a:AZApp) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Enterprise Apps — Service Principals with Key Vault Access",
+      "category": "EntraFalcon — Enterprise Apps",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZGetSecrets|AZKeyVaultContributor]->(:AZKeyVault) RETURN p LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 3 — MANAGED IDENTITIES  (mirrors check_ManagedIdentities.psm1)
+    // Graph source: /v1.0/servicePrincipals?$filter=servicePrincipalType eq 'ManagedIdentity'
+    //               ARM /providers/Microsoft.Authorization/roleAssignments
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Managed Identities — All Managed Identities",
+      "category": "EntraFalcon — Managed Identities",
+      "queryList": [{ "final": true,
+        "query": "MATCH (sp:AZServicePrincipal) WHERE sp.serviceprincipaltype = 'ManagedIdentity' RETURN sp LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Managed Identities — Managed Identities with Subscription Owner",
+      "category": "EntraFalcon — Managed Identities",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZOwner]->(:AZSubscription) WHERE sp.serviceprincipaltype = 'ManagedIdentity' RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Managed Identities — Managed Identities with Privileged Entra Roles",
+      "category": "EntraFalcon — Managed Identities",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZAppAdmin|AZCloudAppAdmin]->(:AZTenant) WHERE sp.serviceprincipaltype = 'ManagedIdentity' RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Managed Identities — Resources Linked to High-Privilege Managed Identities",
+      "category": "EntraFalcon — Managed Identities",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (r)-[:AZManagedIdentity]->(sp:AZServicePrincipal)-[:AZOwner|AZContributor|AZUserAccessAdministrator]->() WHERE sp.serviceprincipaltype = 'ManagedIdentity' RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Managed Identities — VMs with Managed Identities Having Elevated Roles",
+      "category": "EntraFalcon — Managed Identities",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (vm:AZVM)-[:AZManagedIdentity]->(sp:AZServicePrincipal)-[:AZOwner|AZContributor|AZGlobalAdmin]->() WHERE sp.serviceprincipaltype = 'ManagedIdentity' RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Managed Identities — Managed Identities with User Access Administrator at Subscription",
+      "category": "EntraFalcon — Managed Identities",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (r)-[:AZManagedIdentity]->(sp:AZServicePrincipal)-[:AZUserAccessAdministrator]->(:AZSubscription) WHERE sp.serviceprincipaltype = 'ManagedIdentity' RETURN p LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 4 — APP REGISTRATIONS  (mirrors check_AppRegistrations.psm1)
+    // Graph source: /v1.0/applications, /v1.0/applications/{id}/owners
+    //               /v1.0/applications/{id}/federatedIdentityCredentials
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] App Registrations — All App Registrations",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH (a:AZApp) RETURN a LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] App Registrations — Apps with Their Service Principals",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (a:AZApp)<-[:AZRunAs]-(sp:AZServicePrincipal) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] App Registrations — Apps Whose Service Principals Hold Privileged Roles",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (a:AZApp)<-[:AZRunAs]-(sp:AZServicePrincipal)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZAppAdmin]->(:AZTenant) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] App Registrations — Apps Whose Service Principals Have Azure Owner at Subscription",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (a:AZApp)<-[:AZRunAs]-(sp:AZServicePrincipal)-[:AZOwner]->(:AZSubscription) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] App Registrations — Non-Admin Users Who Own App Registrations",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZOwns]->(a:AZApp) WHERE u.enabled = true AND NOT (u)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin]->() RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] App Registrations — Users Who Own Apps Whose SP Has Elevated Privilege",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZOwns]->(a:AZApp)<-[:AZRunAs]-(sp:AZServicePrincipal)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZOwner|AZContributor|AZUserAccessAdministrator]->() WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] App Registrations — Apps with Credential (Password/Certificate) Set",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH (a:AZApp) WHERE a.hascredentials = true RETURN a LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] App Registrations — Multi-Tenant Apps (Broad Sign-In Audience)",
+      "category": "EntraFalcon — App Registrations",
+      "queryList": [{ "final": true,
+        "query": "MATCH (a:AZApp) WHERE a.signinaudience IN ['AzureADMultipleOrgs','AzureADandPersonalMicrosoftAccount'] RETURN a LIMIT 1000"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 5 — USERS  (mirrors check_Users.psm1)
+    // Graph source: /v1.0/users, /v1.0/users/{id}/memberOf
+    //               /v1.0/users/{id}/authenticationMethods (MFA registration)
+    //               /v1.0/users/{id}/appRoleAssignments
+    //               ARM /providers/Microsoft.Authorization/roleAssignments
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Users — All Enabled Azure Users",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH (u:AZUser) WHERE u.enabled = true RETURN u LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Guest Users",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH (u:AZUser) WHERE u.usertype = 'Guest' RETURN u LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Guest Users with Privileged Roles",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZAppAdmin|AZCloudAppAdmin]->(:AZTenant) WHERE u.usertype = 'Guest' AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — On-Premises Synced Users with Privileged Roles",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZAppAdmin|AZCloudAppAdmin]->(:AZTenant) WHERE u.onpremsyncenabled = true AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Users with Azure Subscription Owner Role",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZOwner]->(:AZSubscription) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Users with Azure Subscription Contributor Role",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZContributor]->(:AZSubscription) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Users with User Access Administrator on Any Scope",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZUserAccessAdministrator]->() WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Users with Direct Azure Role on Resource (Not via Group)",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZOwner|AZContributor|AZUserAccessAdministrator]->(:AZVirtualMachine|AZKeyVault|AZStorageAccount) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Users Who Can Execute Commands on VMs",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZVMContributor|AZOwner|AZContributor|AZVM_AdminLogin]->(:AZVM) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Shortest Path from Any User to Global Admin",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = shortestPath((u:AZUser)-[*1..6]->(t:AZTenant)) WHERE u.enabled = true AND ANY(r IN relationships(p) WHERE type(r) = 'AZGlobalAdmin') RETURN p LIMIT 200"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Users — Enabled Users with Key Vault Secret Access",
+      "category": "EntraFalcon — Users",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZGetSecrets]->(:AZKeyVault) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 6 — ROLES  (mirrors check_Roles.psm1)
+    // Graph source: /v1.0/roleManagement/directory/roleAssignments
+    //               /v1.0/roleManagement/directory/roleEligibilitySchedules (PIM eligible)
+    //               /v1.0/roleManagement/directory/roleAssignmentSchedules (PIM active)
+    //               /v1.0/roleManagement/directory/roleDefinitions
+    //               ARM /providers/Microsoft.Authorization/roleAssignments
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Roles — All Global Administrators",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZGlobalAdmin]->(:AZTenant) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — All Privileged Role Administrators",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZPrivilegedRoleAdmin]->(:AZTenant) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — All User Access Administrators",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZUserAccessAdministrator]->() RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — All Application Administrators",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZAppAdmin]->(:AZTenant) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — All Cloud Application Administrators",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZCloudAppAdmin]->(:AZTenant) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — Principals with Any Privileged Entra Role",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZAppAdmin|AZCloudAppAdmin]->(:AZTenant) RETURN p LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — Paths to Global Admin via Group Membership",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZMemberOf*1..3]->(g:AZGroup)-[:AZGlobalAdmin]->(:AZTenant) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — Permanent Active Assignments (No PIM) on High-Privilege Roles",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator]->(:AZTenant) WHERE n.hasspn = false RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — Azure Subscription Owners (All Principal Types)",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZOwner]->(:AZSubscription) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Roles — Transitive Paths to Subscription Owner",
+      "category": "EntraFalcon — Roles",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = allShortestPaths((u:AZUser)-[*1..5]->(s:AZSubscription)) WHERE (u)-[:AZOwner]->(s) OR ANY(n IN nodes(p) WHERE (n)-[:AZOwner]->(s)) AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 7 — CONDITIONAL ACCESS  (mirrors check_CAPs.psm1)
+    // Graph source: /v1.0/identity/conditionalAccess/policies
+    //               /v1.0/identity/conditionalAccess/namedLocations
+    //               /beta/identity/conditionalAccess/authenticationStrengths
+    // Note: BloodHound CE does not model CAP nodes natively; these queries
+    // surface the object-level attack surface that CAP misconfigurations expose.
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Conditional Access — Groups Used as CA Exclusions (Unprotected)",
+      "category": "EntraFalcon — Conditional Access",
+      "queryList": [{ "final": true,
+        "query": "MATCH (g:AZGroup) WHERE g.capexclusiongroup = true RETURN g LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Conditional Access — Groups in CA Exclusions That Also Have Privileged Roles",
+      "category": "EntraFalcon — Conditional Access",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (g:AZGroup)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZOwner|AZContributor]->() WHERE g.capexclusiongroup = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Conditional Access — Users Who Can Modify CA Exclusion Groups",
+      "category": "EntraFalcon — Conditional Access",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZAddMembers|AZOwns|AZGenericWrite]->(g:AZGroup) WHERE g.capexclusiongroup = true AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Conditional Access — Paths to CA Exclusion Group Membership",
+      "category": "EntraFalcon — Conditional Access",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = allShortestPaths((u:AZUser)-[*1..4]->(g:AZGroup)) WHERE g.capexclusiongroup = true AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Conditional Access — Service Principals That Can Add to CA Exclusion Groups",
+      "category": "EntraFalcon — Conditional Access",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (sp:AZServicePrincipal)-[:AZAddMembers|AZOwns]->(g:AZGroup) WHERE g.capexclusiongroup = true RETURN p LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 8 — PIM  (mirrors check_PIM.psm1)
+    // Graph source: /v1.0/roleManagement/directory/roleEligibilitySchedules
+    //               /v1.0/roleManagement/directory/roleAssignmentScheduleInstances
+    //               /v1.0/policies/roleManagementPolicyAssignments
+    //               /v1.0/policies/roleManagementPolicies/{id}/rules
+    //               api.azrbac.mspim.azure.com (PIM for Groups)
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] PIM — Users with PIM-Eligible High-Privilege Roles",
+      "category": "EntraFalcon — PIM",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZHasRole]->(r:AZRole) WHERE r.displayname IN ['Global Administrator','Privileged Role Administrator','User Access Administrator','Application Administrator','Cloud Application Administrator','Privileged Authentication Administrator','Security Administrator','Exchange Administrator','SharePoint Administrator'] AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] PIM — Groups Eligible for Privileged Roles (PIM for Groups)",
+      "category": "EntraFalcon — PIM",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (g:AZGroup)-[:AZHasRole]->(r:AZRole) WHERE r.displayname IN ['Global Administrator','Privileged Role Administrator','User Access Administrator'] AND g.isassignabletorole = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] PIM — PIM-Eligible Paths from Regular Users to Subscription Owner",
+      "category": "EntraFalcon — PIM",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZHasRole|AZMemberOf*1..3]->(g:AZGroup)-[:AZOwner]->(:AZSubscription) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] PIM — Users Eligible for Roles With No Active Assignments (PIM Only)",
+      "category": "EntraFalcon — PIM",
+      "queryList": [{ "final": true,
+        "query": "MATCH (u:AZUser)-[:AZHasRole]->(r:AZRole) WHERE u.enabled = true AND NOT (u)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator]->(:AZTenant) RETURN u, r LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 9 — TENANT / SECURITY FINDINGS  (mirrors check_Tenant.psm1)
+    // Graph source: /v1.0/organization, /v1.0/policies/authorizationPolicy
+    //               /v1.0/policies/identitySecurityDefaultsEnforcementPolicy
+    //               /v1.0/directoryRoles, /v1.0/subscribedSkus
+    //               /beta/reports/authenticationMethods/userRegistrationDetails
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Tenant — All Tenants in Graph",
+      "category": "EntraFalcon — Tenant",
+      "queryList": [{ "final": true,
+        "query": "MATCH (t:AZTenant) RETURN t LIMIT 10"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Tenant — All Subscriptions and Their Owners",
+      "category": "EntraFalcon — Tenant",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZOwner]->(:AZSubscription) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Tenant — Management Group Hierarchy",
+      "category": "EntraFalcon — Tenant",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (:AZManagementGroup)-[:AZContains*1..]->(:AZManagementGroup|AZSubscription) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Tenant — Principals with Owner on Management Group",
+      "category": "EntraFalcon — Tenant",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZOwner]->(:AZManagementGroup) RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Tenant — On-Premises Synced Accounts with Elevated Cloud Roles",
+      "category": "EntraFalcon — Tenant",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZUserAccessAdministrator|AZAppAdmin]->(:AZTenant) WHERE u.onpremsyncenabled = true AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Tenant — Devices Registered in Tenant",
+      "category": "EntraFalcon — Tenant",
+      "queryList": [{ "final": true,
+        "query": "MATCH (d:AZDevice) RETURN d LIMIT 1000"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Tenant — Devices with Admin-Level Access to Resources",
+      "category": "EntraFalcon — Tenant",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (d:AZDevice)-[:AZOwner|AZContributor|AZVM_AdminLogin]->() RETURN p LIMIT 500"
+      }]
+    },
+
+    // =========================================================================
+    // SECTION 10 — CROSS-CUTTING ATTACK PATHS
+    // Composite queries spanning multiple EntraFalcon enumeration areas.
+    // These mirror the risk-scoring logic EntraFalcon applies internally.
+    // =========================================================================
+
+    {
+      "name": "[EntraFalcon] Attack Path — Shortest Path: Any Enabled User → Global Admin",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = shortestPath((u:AZUser)-[*1..8]->(t:AZTenant)) WHERE u.enabled = true AND ANY(r IN relationships(p) WHERE type(r) = 'AZGlobalAdmin') RETURN p LIMIT 200"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — Shortest Path: Any Service Principal → Global Admin",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = shortestPath((sp:AZServicePrincipal)-[*1..6]->(t:AZTenant)) WHERE ANY(r IN relationships(p) WHERE type(r) = 'AZGlobalAdmin') RETURN p LIMIT 200"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — Shortest Path: Any Principal → Subscription Owner",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = shortestPath((n)-[*1..6]->(:AZSubscription)) WHERE NOT (n:AZTenant OR n:AZSubscription OR n:AZManagementGroup) RETURN p LIMIT 200"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — Guest User → Any Privileged Path",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = allShortestPaths((u:AZUser)-[*1..6]->(t:AZTenant)) WHERE u.usertype = 'Guest' AND u.enabled = true AND ANY(r IN relationships(p) WHERE type(r) IN ['AZGlobalAdmin','AZPrivilegedRoleAdmin','AZUserAccessAdministrator','AZOwner']) RETURN p LIMIT 200"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — On-Prem Synced Account → Subscription Owner",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = allShortestPaths((u:AZUser)-[*1..6]->(:AZSubscription)) WHERE u.onpremsyncenabled = true AND u.enabled = true AND ANY(r IN relationships(p) WHERE type(r) = 'AZOwner') RETURN p LIMIT 200"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — Compute Resource → High Privilege via Managed Identity",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (vm)-[:AZManagedIdentity]->(sp:AZServicePrincipal)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin|AZOwner|AZUserAccessAdministrator]->() WHERE sp.serviceprincipaltype = 'ManagedIdentity' RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — App Owner → Subscription Owner via SP",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZOwns]->(a:AZApp)<-[:AZRunAs]-(sp:AZServicePrincipal)-[:AZOwner]->(:AZSubscription) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — User Controlling Group → CA Exclusion → Bypass MFA",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (u:AZUser)-[:AZAddMembers|AZOwns]->(g:AZGroup) WHERE g.capexclusiongroup = true AND u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — Principals That Can Reset Password of GA",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZResetPassword]->(u:AZUser)-[:AZGlobalAdmin]->(:AZTenant) WHERE u.enabled = true RETURN p LIMIT 500"
+      }]
+    },
+    {
+      "name": "[EntraFalcon] Attack Path — Key Vault Secrets Accessible by Non-Privileged Principals",
+      "category": "EntraFalcon — Attack Paths",
+      "queryList": [{ "final": true,
+        "query": "MATCH p = (n)-[:AZGetSecrets]->(:AZKeyVault) WHERE NOT (n)-[:AZGlobalAdmin|AZPrivilegedRoleAdmin]->(:AZTenant) RETURN p LIMIT 500"
+      }]
+    }
+
+  ]
+}
