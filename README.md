@@ -178,11 +178,12 @@ azure_collect_<timestamp>/
 ├── tokens/
 │   ├── graph_modern.token          # Raw modern Graph JWT
 │   ├── graph_legacy.token          # Raw legacy Graph JWT
+│   ├── arm.token                   # Raw ARM JWT (if obtained)
 │   ├── graph_modern_claims.json    # Decoded modern token claims
 │   └── graph_legacy_claims.json    # Decoded legacy token claims
 ├── roadrecon/
 │   ├── roadrecon.db                # SQLite database
-│   └── roadrecon.html              # Interactive graph report
+│   └── roadrecon.xlsx              # Excel export (xlsexport plugin)
 ├── azurehound/
 │   └── azurehound.json             # BloodHound CE import file
 └── entrafalcon/
@@ -199,9 +200,13 @@ Two tokens are retrieved from the authenticated `az` session, targeting differen
 |-------|----------|---------|
 | **Legacy** | `graph.windows.net` (v1 OAuth2) | roadrecon |
 | **Modern** | `graph.microsoft.com` (v2 OAuth2) | azurehound |
-| **ARM** | `management.azure.com` | azurehound (resource enumeration) |
+| **ARM** | `management.azure.com` | saved for a manual ARM-scoped azurehound run |
 
 Tokens are redeemed silently from the MSAL cache via `az account get-access-token` — no second browser prompt.
+
+> **AzureHound v3 note:** `azurehound list` accepts a single `--jwt` (a Graph *or* ARM scoped token), not both. This tool passes the modern Graph token to enumerate Entra objects. To collect ARM resources, run azurehound separately against the saved ARM token, e.g. `azurehound list --jwt "$(cat tokens/arm.token)" --tenant <TENANT_ID> -o arm.json`.
+
+> **roadrecon note:** roadrecon has no HTML report; the interactive graph is served live with `roadrecon gui -d <output>/roadrecon/roadrecon.db`. This tool writes an Excel workbook via the `xlsexport` plugin instead.
 
 ---
 

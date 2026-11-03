@@ -581,6 +581,9 @@ def stage_tokens(args, output: Path) -> dict:
     # Raw tokens saved to separate files for easy copy-paste into other tools
     (token_out / "graph_modern.token").write_text(tokens.get("graph_modern", ""), encoding="utf-8")
     (token_out / "graph_legacy.token").write_text(tokens.get("graph_legacy", ""), encoding="utf-8")
+    # ARM token saved for a manual ARM-scoped azurehound run (v3 takes one JWT).
+    if tokens.get("arm"):
+        (token_out / "arm.token").write_text(tokens["arm"], encoding="utf-8")
     info(f"Token files saved to: {token_out}")
 
     return tokens
@@ -624,20 +627,21 @@ def stage_roadrecon(args, tokens: dict, output: Path) -> None:
 
     info(f"roadrecon database saved to: {db_path}")
 
-    # ── Export: generate HTML report ──────────────────────────────────────────
-    section("roadrecon export — HTML report")
-    html_path = rr_dir / "roadrecon.html"
+    # ── Export: Excel workbook (roadrecon has no HTML export; 'dump' is just
+    #    an alias for 'gather'). The xlsexport plugin is the file export; the
+    #    interactive graph is served live via `roadrecon gui -d <db>`. ────────
+    section("roadrecon export — Excel workbook (xlsexport plugin)")
+    xlsx_path = rr_dir / "roadrecon.xlsx"
     try:
         run(
-            ["roadrecon", "dump",
+            ["roadrecon", "plugin", "xlsexport",
              "--database", str(db_path),
-             "--output-format", "html",
-             "--output", str(html_path)],
+             "--file", str(xlsx_path)],
             timeout=120,
         )
-        info(f"HTML report saved to: {html_path}")
+        info(f"Excel workbook saved to: {xlsx_path}")
     except Exception as e:
-        warn(f"roadrecon HTML export failed (non-fatal): {e}")
+        warn(f"roadrecon Excel export failed (non-fatal): {e}")
 
 
 # ── Stage 4 — azurehound list ─────────────────────────────────────────────────
@@ -682,19 +686,17 @@ def stage_azurehound(args, tokens: dict, output: Path) -> None:
 
     # ── Execute ───────────────────────────────────────────────────────────────
     try:
-        arm_token = tokens.get("arm")
-
+        # AzureHound v3 takes a single scoped JWT via --jwt (no separate ARM
+        # flag). We pass the Graph token here; the ARM token is saved to disk
+        # for a manual ARM-scoped azurehound run if resource enum is needed.
         cmd = [
             ah_bin, "list",
-            "--jwt-access-token", modern_token,
+            "--jwt", modern_token,
             "--tenant", args.tenant,
             "--output", str(ah_dir / "azurehound.json"),
         ]
-        if arm_token:
-            cmd += ["--arm-jwt-access-token", arm_token]
-            info("ARM token supplied — resource enumeration enabled.")
-        else:
-            warn("No ARM token — azurehound will enumerate Entra objects only.")
+        if not tokens.get("arm"):
+            warn("No ARM token — Entra objects only (ARM resources need a separate run).")
 
         section("azurehound list")
         run(cmd, timeout=3600)
@@ -886,7 +888,7 @@ def main() -> None:
 
     rows = [
         ("tokens/",      "Raw JWTs + decoded claims",            "roadrecon", "azurehound", "entrafalcon"),
-        ("roadrecon/",   "roadrecon.db  +  HTML graph report",   "roadrecon"),
+        ("roadrecon/",   "roadrecon.db  +  Excel export",        "roadrecon"),
         ("azurehound/",  "BloodHound-ready JSON for import",     "azurehound"),
         ("entrafalcon/", "HTML report  +  findings summary",     "entrafalcon"),
     ]
@@ -903,7 +905,7 @@ def main() -> None:
 
     next_steps = []
     if "azurehound"  in stages: next_steps.append(("BloodHound CE",  "Import azurehound/azurehound.json"))
-    if "roadrecon"   in stages: next_steps.append(("roadrecon UI",   "Run: roadrecon roadui"))
+    if "roadrecon"   in stages: next_steps.append(("roadrecon UI",   "Run: roadrecon gui -d <output>/roadrecon/roadrecon.db"))
     if "entrafalcon" in stages: next_steps.append(("EntraFalcon",    "Review entrafalcon/ HTML report"))
 
     for tool, hint in next_steps:
