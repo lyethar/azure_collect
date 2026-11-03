@@ -89,7 +89,6 @@ def print_startup_banner() -> None:
 /_/ |_/____//____|____/\___/ \___/ /_/   /____//____//___/ /___/ /___/
 """
     tagline = "Azure / Entra ID Collection & Tool Orchestration"
-    credit  = "Clearwater Security  |  7 Vikings Security"
     if _USE_COLOUR:
         # Gradient: cyan → blue → purple across lines
         colours = [_CYAN, _BLUE, _BLUE, _PURPLE]
@@ -100,11 +99,9 @@ def print_startup_banner() -> None:
         )
         print(coloured)
         print(_c(_GREY,   f"  {tagline}"))
-        print(_c(_GREY,   f"  {credit}"))
     else:
         print(art)
         print(f"  {tagline}")
-        print(f"  {credit}")
     print()
 
 
@@ -412,6 +409,9 @@ def stage_login(args) -> None:
     banner("Stage 1 — az cli Login")
 
     if args.skip_login:
+        if _any_token_provided(args):
+            info("--skip-login set with supplied tokens — no az session required.")
+            return
         info("--skip-login set — verifying existing session...")
         result = az("account", "show", capture=True, check=False)
         if result.returncode != 0:
@@ -453,6 +453,12 @@ GRAPH_RESOURCE_MODERN = "https://graph.microsoft.com"
 GRAPH_RESOURCE_LEGACY = "https://graph.windows.net"
 ARM_RESOURCE          = "https://management.azure.com"
 
+# Env vars for pre-fetched tokens (e.g. retrieved via the cloud Azure CLI when
+# Conditional Access blocks local auth). CLI flags take precedence over these.
+ENV_GRAPH_MODERN = "AZURE_COLLECT_GRAPH_MODERN_TOKEN"
+ENV_GRAPH_LEGACY = "AZURE_COLLECT_GRAPH_LEGACY_TOKEN"
+ENV_ARM          = "AZURE_COLLECT_ARM_TOKEN"
+
 def _get_az_token(resource: str) -> dict:
     """Retrieve an access token for a resource via az cli."""
     result = az(
@@ -482,6 +488,29 @@ def _token_expiry(token: str) -> str:
         return "unknown"
 
 
+def _resolve_token(cli_value: str, env_name: str) -> str:
+    """Return a token supplied via CLI flag (preferred) or environment variable."""
+    return cli_value or os.environ.get(env_name) or ""
+
+
+def _any_token_provided(args) -> bool:
+    return bool(
+        _resolve_token(args.graph_modern_token, ENV_GRAPH_MODERN)
+        or _resolve_token(args.graph_legacy_token, ENV_GRAPH_LEGACY)
+        or _resolve_token(args.arm_token, ENV_ARM)
+    )
+
+
+def _obtain_token(label: str, resource: str, provided: str) -> str:
+    """Use a pre-supplied token if given, otherwise redeem one via az cli."""
+    if provided:
+        info(f"{label} supplied directly — expires: {_token_expiry(provided)}")
+        return provided
+    data = _get_az_token(resource)
+    info(f"{label} obtained — expires: {data.get('expiresOn', _token_expiry(data['accessToken']))}")
+    return data["accessToken"]
+
+
 def stage_tokens(args, output: Path) -> dict:
     """
     Retrieve tokens from both endpoint generations:
@@ -499,27 +528,32 @@ def stage_tokens(args, output: Path) -> dict:
 
     # ── Modern Graph token (v2 endpoint) ──────────────────────────────────────
     section("Modern Graph token  (v2 / graph.microsoft.com)")
-    modern = _get_az_token(GRAPH_RESOURCE_MODERN)
-    tokens["graph_modern"] = modern["accessToken"]
-    info(f"Modern Graph token obtained — expires: {modern.get('expiresOn', _token_expiry(modern['accessToken']))}")
+    tokens["graph_modern"] = _obtain_token(
+        "Modern Graph token", GRAPH_RESOURCE_MODERN,
+        _resolve_token(args.graph_modern_token, ENV_GRAPH_MODERN))
 
     # ── Legacy Graph token (v1 endpoint / graph.windows.net) ─────────────────
     # roadrecon's gatherer targets the legacy AAD Graph API (graph.windows.net).
     # az cli can redeem a v1 token for this resource directly.
     section("Legacy Graph token  (v1 / graph.windows.net)")
-    legacy = _get_az_token(GRAPH_RESOURCE_LEGACY)
-    tokens["graph_legacy"] = legacy["accessToken"]
-    info(f"Legacy Graph token obtained — expires: {legacy.get('expiresOn', _token_expiry(legacy['accessToken']))}")
+    tokens["graph_legacy"] = _obtain_token(
+        "Legacy Graph token", GRAPH_RESOURCE_LEGACY,
+        _resolve_token(args.graph_legacy_token, ENV_GRAPH_LEGACY))
 
     # ── ARM token ─────────────────────────────────────────────────────────────
     section("ARM token  (management.azure.com)")
-    try:
-        arm = _get_az_token(ARM_RESOURCE)
-        tokens["arm"] = arm["accessToken"]
-        info(f"ARM token obtained — expires: {arm.get('expiresOn', _token_expiry(arm['accessToken']))}")
-    except Exception as e:
-        warn(f"ARM token retrieval failed (no subscriptions?): {e}")
-        tokens["arm"] = None
+    arm_provided = _resolve_token(args.arm_token, ENV_ARM)
+    if arm_provided:
+        tokens["arm"] = arm_provided
+        info(f"ARM token supplied directly — expires: {_token_expiry(arm_provided)}")
+    else:
+        try:
+            arm = _get_az_token(ARM_RESOURCE)
+            tokens["arm"] = arm["accessToken"]
+            info(f"ARM token obtained — expires: {arm.get('expiresOn', _token_expiry(arm['accessToken']))}")
+        except Exception as e:
+            warn(f"ARM token retrieval failed (no subscriptions?): {e}")
+            tokens["arm"] = None
 
     # ── Inspect token claims ──────────────────────────────────────────────────
     section("Token Claims")
@@ -765,6 +799,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=["login", "tokens", "roadrecon", "azurehound", "entrafalcon"],
         help="Stages to run (default: all).",
     )
+
+    toks = p.add_argument_group(
+        "Token Input",
+        "Supply pre-fetched tokens (e.g. from the cloud Azure CLI when "
+        "Conditional Access blocks local auth). Use with --skip-login to avoid "
+        "any local authentication. Flags override the matching env vars.")
+    toks.add_argument("--graph-modern-token", default=None,
+                      help=f"Modern Graph JWT (env: {ENV_GRAPH_MODERN}).")
+    toks.add_argument("--graph-legacy-token", default=None,
+                      help=f"Legacy Graph JWT (env: {ENV_GRAPH_LEGACY}).")
+    toks.add_argument("--arm-token", default=None,
+                      help=f"ARM JWT (env: {ENV_ARM}).")
 
     tools = p.add_argument_group("Tool Paths")
     tools.add_argument("--azurehound",

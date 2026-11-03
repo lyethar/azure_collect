@@ -85,6 +85,46 @@ python azure_collect.py --tenant <TENANT_ID> --auth sp \
     --client-secret <SECRET>
 ```
 
+### Supply pre-fetched tokens (Conditional Access bypass)
+
+When Conditional Access policies prevent authenticating locally, retrieve the
+tokens through the **cloud Azure CLI** in the Azure portal, copy them to your
+workstation, and feed them to the tool with `--skip-login`. No local login is
+then attempted.
+
+In the Azure portal Cloud Shell:
+
+```bash
+# Modern Graph (azurehound)
+az account get-access-token --resource https://graph.microsoft.com --query accessToken -o tsv
+# Legacy Graph (roadrecon)
+az account get-access-token --resource https://graph.windows.net --query accessToken -o tsv
+# ARM (azurehound resource enumeration)
+az account get-access-token --resource https://management.azure.com --query accessToken -o tsv
+```
+
+Then run locally, either via flags:
+
+```bash
+python azure_collect.py --tenant <TENANT_ID> --skip-login \
+    --graph-modern-token "<MODERN_JWT>" \
+    --graph-legacy-token "<LEGACY_JWT>" \
+    --arm-token "<ARM_JWT>"
+```
+
+…or via environment variables (keeps tokens out of shell history / process list):
+
+```bash
+export AZURE_COLLECT_GRAPH_MODERN_TOKEN="<MODERN_JWT>"
+export AZURE_COLLECT_GRAPH_LEGACY_TOKEN="<LEGACY_JWT>"
+export AZURE_COLLECT_ARM_TOKEN="<ARM_JWT>"
+python azure_collect.py --tenant <TENANT_ID> --skip-login
+```
+
+Supply only the tokens the stages you run need (e.g. just the legacy token for
+`--stages tokens roadrecon`). Any token not supplied falls back to `az account
+get-access-token`. CLI flags take precedence over the environment variables.
+
 ### Run only specific stages
 
 ```bash
@@ -120,6 +160,9 @@ python azure_collect.py --tenant <TENANT_ID> --no-auto-download
 | `--skip-login` | — | Skip `az login` and reuse an existing session |
 | `--client-id` | — | Service principal client ID (`--auth sp` only) |
 | `--client-secret` | — | Service principal client secret (`--auth sp` only) |
+| `--graph-modern-token` | — | Pre-fetched modern Graph JWT (env: `AZURE_COLLECT_GRAPH_MODERN_TOKEN`) |
+| `--graph-legacy-token` | — | Pre-fetched legacy Graph JWT (env: `AZURE_COLLECT_GRAPH_LEGACY_TOKEN`) |
+| `--arm-token` | — | Pre-fetched ARM JWT (env: `AZURE_COLLECT_ARM_TOKEN`) |
 | `--output` | `azure_collect_<timestamp>` | Output directory |
 | `--stages` | all | Whitelist of stages to run |
 | `--azurehound` | `azurehound` (PATH) | Path to azurehound binary |
